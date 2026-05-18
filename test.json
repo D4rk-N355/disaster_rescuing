@@ -1,0 +1,32 @@
+{
+  "metadata": {
+    "incident_id": "mataian-2025-001",
+    "priority_weighting": "balanced"
+  },
+  "work_types": [
+    {"type_id": "Medical", "required_skills": ["FirstAid", "EMT"]},
+    {"type_id": "Logistics", "required_skills": ["HeavyLifting"]}
+  ],
+  "volunteers": [
+    {
+      "id": "vol_01",
+      "skills": ["FirstAid"],
+      "location": {"lat": 23.654, "lng": 121.432},
+      "availability": true
+    },
+    {
+      "id": "vol_02",
+      "skills": ["HeavyLifting"],
+      "location": {"lat": 23.660, "lng": 121.440},
+      "availability": true
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task_101",
+      "type_id": "Medical",
+      "location": {"lat": 23.656, "lng": 121.435},
+      "urgency": 5
+    }
+  ]
+}
