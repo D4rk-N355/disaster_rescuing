@@ -10,6 +10,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# ---------------------------------------------------------------------------
+# 1. 核心 API 運作端點 (派發任務)
+# ---------------------------------------------------------------------------
 @app.post("/api/v1/dispatch/v1", response_model=DispatchResponse, status_code=status.HTTP_200_OK)
 async def create_dispatch_plan(payload: DispatchRequest):
     try:
@@ -23,6 +26,31 @@ async def create_dispatch_plan(payload: DispatchRequest):
     except Exception as e:
         # 伺服器內部錯誤 (500)
         raise HTTPException(status_code=500, detail=f"AI 分配服務暫時無法使用: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# 2. 健康檢查端點 (含 Ollama 連線狀態)
+# ---------------------------------------------------------------------------
+@app.get("/health", status_code=status.HTTP_200_OK)
+async def health_check():
+    """
+    系統健康檢查端點，同時確認本機 API 與後端 Ollama 服務的運作狀態。
+    """
+    # 呼叫 Service 內寫好的 Ollama 連線檢查方法
+    ollama_healthy = DispatchService._verify_ollama_connection()
+    
+    status_msg = "healthy" if ollama_healthy else "degraded"
+    
+    # 即使 Ollama 斷線，因為系統有「本地演算法」作為降級備援(Fallback)，
+    # 這裡可以選擇不噴 500 錯誤，而是回傳狀態讓監控系統知道。
+    return {
+        "status": status_msg,
+        "components": {
+            "api_server": "up",
+            "ollama_service": "up" if ollama_healthy else "down"
+        }
+    }
+
 
 # 測試用預留根路由
 @app.get("/")
