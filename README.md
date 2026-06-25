@@ -1,417 +1,152 @@
-救災志工智慧分配元件
-Disaster Volunteer Dispatcher API
+# 救災志工智慧分配 API
 
----------------------------------------------------
+本專案提供「確定性演算法」的災害任務志工指派服務，並以「路線距離估算」、「技能匹配」與「任務緊急度」作為核心權重。
+AI 僅用於「異常檢查」與驗證提示，非主要分派決策。
 
-專案簡介
+## 核心功能
 
-本元件為響應數位發展部「防災積木元件創新賽：公民科技拼出韌性臺灣」之參賽作品。
+- deterministic volunteer assignment（不依賴 AI 作指派）
+- route-based distance estimation for ETA and scoring
+- skill matching and urgency-aware scoring
+- priority weighting: `balanced`, `speed`, `expertise`
+- optional AI anomaly check via Ollama
+- LINE volunteer registration endpoint
+- built-in fallback: 即使 AI 不可用也能正常分派
 
-本專案採用「積木式設計（Modular Design）」概念，聚焦於災變管理系統中的「分析（Analysis）」功能，提供一組標準化、去識別化且高擴充性的 API 服務。
+## API 端點
 
-系統可獨立部署，不依賴特定前端平台，能自由整合至：
+### POST /api/v1/dispatch
 
-* LINE Bot
-* Google Chat
-* Web Dashboard
-* 民生公共物聯網災防平台
-* 其他災防管理系統
+- 輸入：`DispatchRequest`
+- 輸出：`DispatchResponse`
+- 功能：根據 volunteer 可用性、任務緊急度、技能匹配與路徑距離進行任務指派。
 
----------------------------------------------------
+### POST /api/v1/line/register
 
-問題背景
+- 輸入：`LineVolunteerRegistration`
+- 輸出：`LineRegisterResponse`
+- 功能：註冊 LINE 志工資料並支援群組管理。
 
+### GET /health
 
-在大型災害發生時，例如：
-```
-* 地震
-* 土石流
-* 堰塞湖事件
-* 大規模淹水
-* 物資短缺事件
-```
-現場會同時出現大量：
-```
-* 救護需求
-* 物資需求
-* 人力調度需求
-* 緊急支援需求
-```
-然而，傳統人工調度志工常面臨以下問題：
+- 功能：回傳 API 健康狀態與 Ollama 連線狀態。
 
-1. 專長無法快速媒合
-   無法第一時間將具備：
-```
-* 醫療能力
-* 搬運能力
-* 行政能力
-* 特殊技術能力
-```
-的志工派遣至正確任務。
+### GET /
 
-2. 動態調度困難
-   災害現場變化快速，人工難以同時計算：
-```
-* 任務緊急程度
-* 地理距離
-* 可用志工
-* 技能匹配
-* 預估抵達時間
-```
-因此容易造成：
-```
-* 人力浪費
-* 派遣延遲
-* 資源錯置
-```
+- 功能：基本服務存活檢查。
 
----------------------------------------------------
+## 資料模型
 
-核心解法
+### DispatchRequest
 
+- `metadata`
+  - `incident_id`: 事件識別碼
+  - `priority_weighting`: `balanced` / `speed` / `expertise`
+- `work_types`
+  - `type_id`, `required_skills`
+- `volunteers`
+  - `id`, `skills`, `location`, `availability`
+- `tasks`
+  - `id`, `type_id`, `location`, `urgency`
 
-本系統提供一套「智慧化志工調度 API」。
+### DispatchResponse
 
-系統接收標準化 JSON 資料後，會：
-```
-1. 分析任務需求
-2. 計算志工距離
-3. 比對技能需求
-4. 評估任務優先度
-5. 自動產生最佳派遣結果
-```
-系統核心採用：
-```
-* Haversine 地理距離計算
-* AI Agent 多步推理
-* 本地演算法保底機制
-* 結構化日誌追蹤
-```
+- `status`: `success`
+- `dispatch_id`: UUID
+- `incident_id`
+- `mode`: `algorithm_only` 或 `algorithm_with_ai_anomaly_check`
+- `assignments`: 任務分派結果
+- `unassigned_tasks`: 未指派任務清單
+- `warnings`: 異常或狀態提醒
 
----------------------------------------------------
+### Assignment
 
-系統架構
+- `task_id`
+- `assigned_volunteers`
+- `eta_minutes`
+- `confidence`
+- `score_breakdown`
+- `reasoning_summary`
 
+### ScoreBreakdown
 
-本系統採用：
+- `skill_score`
+- `distance_score`
+- `urgency_score`
+- `final_score`
 
-「本地 Ollama + Python API Server」
+## 範例請求
 
-架構。
-
-主要特色如下：
-
-1. 本地執行
-   使用 Ollama 在本地執行大型語言模型（LLM），不依賴外部雲端服務。
-```
-優點：
-
-* 提高穩定性
-* 降低延遲
-* 保護資料隱私
-* 降低 API 成本
-```
-2. 雙模型架構
-
-(1) 派發模型
-用途：
-```
-* 進行快速志工分配
-```
-預設模型：
-```
-* mistral
-```
-特性：
-```
-* 輕量
-* 推理快速
-```
-(2) 偵錯模型
-用途：
-```
-* 驗證 AI 派遣結果
-* 檢查異常輸出
-```
-預設模型：
-```
-* neural-chat
-```
-3. 本地演算法保底
-   若 AI 模型不可用，系統將自動降級至：
-
-「技能匹配 + 距離優先」
-
-的確定性演算法。
-
-確保：
-```
-* 系統不中斷
-* 任務仍能正常派發
-```
-4. 結構化日誌
-   完整記錄：
-```
-* 派遣流程
-* AI 決策
-* 演算法結果
-* 錯誤資訊
-```
-方便：
-```
-* 除錯
-* 稽核
-* 後續分析
+```json
+{
+  "metadata": {"incident_id": "incident-2026-001", "priority_weighting": "balanced"},
+  "work_types": [
+    {"type_id": "medical", "required_skills": ["medical", "firstaid"]}
+  ],
+  "volunteers": [
+    {
+      "id": "vol_01",
+      "skills": ["medical", "firstaid"],
+      "location": {"lat": 23.654, "lng": 121.432},
+      "availability": true
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task_101",
+      "type_id": "medical",
+      "location": {"lat": 23.656, "lng": 121.435},
+      "urgency": 5
+    }
+  ]
+}
 ```
 
----------------------------------------------------
+## 範例回應
 
-資料安全與隱私
-
-
-本系統採用：
-```
-* 去識別化 ID
-* 標準化 JSON 格式
-* 本地模型推理
-```
-避免直接暴露個人資料。
-
-所有輸入與輸出均以：
-```
-* volunteer_id
-* task_id
-```
-等識別碼進行交換。
-
----------------------------------------------------
-
-環境需求
-
-
-必要環境：
-```
-* Python 3.10+(推薦python 3.12.10)
-* Ollama
-* FastAPI
-* Uvicorn
+```json
+{
+  "status": "success",
+  "dispatch_id": "uuid-xxx",
+  "incident_id": "incident-2026-001",
+  "mode": "algorithm_with_ai_anomaly_check",
+  "assignments": [
+    {
+      "task_id": "task_101",
+      "assigned_volunteers": ["vol_01"],
+      "eta_minutes": 6,
+      "confidence": 0.88,
+      "score_breakdown": {
+        "skill_score": 1.0,
+        "distance_score": 0.9,
+        "urgency_score": 1.0,
+        "final_score": 0.88
+      },
+      "reasoning_summary": "已依據技能、距離與緊急度進行指派。"
+    }
+  ],
+  "unassigned_tasks": [],
+  "warnings": ["系統已完成演算法分配與本地異常檢查，未發現顯著異常。"]
+}
 ```
 
----------------------------------------------------
-
-安裝流程
-
-
-步驟 1：安裝 Ollama
-
-下載並安裝：
-```
-https://ollama.ai
-```
-啟動服務：
-```bash
-ollama serve
-```
-預設 API：
-```
-http://localhost:11434
-```
-
----------------------------------------------------
-
-步驟 2：下載模型
-
-執行：
-```bash
-ollama pull mistral
-
-ollama pull neural-chat
-```
-
----------------------------------------------------
-步驟 3：設定 .env
-
-
-本地模式：
-```
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL_DISPATCH=mistral
-OLLAMA_MODEL_DEBUG=neural-chat
-```
-
----------------------------------------------------
-
-啟動方式
-
-
-Linux / macOS：
-
-終端機 1：
-```bash
-ollama serve
-```
-終端機 2：
-```bash
-source .venv/bin/activate
-
-python3 -m pip install -r requirements.txt
-
-uvicorn main:app --reload
-```
-
----------------------------------------------------
-Windows：
+## 安裝與啟動
 
 ```bash
 python -m pip install -r requirements.txt
-
-ollama serve
-
-uvicorn main:app --reload
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
----------------------------------------------------
+## AI 異常檢查
 
-系統工作流程
+系統會在本地演算法分派完成後，嘗試使用 Ollama 進行額外異常檢查；若無法連線，仍然會回傳分派結果，並將 `mode` 設為 `algorithm_only`。
 
+## LINE 志工註冊
+
+`POST /api/v1/line/register` 可登錄 LINE 志工資料，回傳 `group_id`。
+
+## 測試
+
+```bash
+python test_dispatch.py
 ```
-1. 接收任務與志工資料
-
-2. AI 模型進行派遣分析
-
-3. 偵錯模型驗證結果
-
-4. 若 AI 失敗：
-   啟用本地演算法降級
-
-5. 回傳最佳派遣結果
-```
-
----------------------------------------------------
-
-API 回應格式
-```json
-{
-"status": "success",
-"dispatch_id": "uuid-xxx",
-"assignments": [
-{
-"task_id": "task_101",
-"assigned_volunteers": ["vol_01"],
-"eta_minutes": 15,
-"reasoning_summary": "[Ollama 派發模型] 指派 vol_01"
-}
-]
-}
-```
-
----------------------------------------------------
-
-日誌說明
-
-
-[Ollama 派發模型]
-代表：
-AI 模型成功完成派遣。
-
-[本地演算法]
-代表：
-系統已降級為本地演算法。
-
----------------------------------------------------
-
-推薦模型
-
-
-派發模型：
-```
-* mistral
-* llama2
-* orca-mini
-```
-驗證模型：
-```
-* neural-chat
-* openchat
-```
-
----------------------------------------------------
-
-故障排查
-
-
-問題：
-無法連線到 Ollama
-
-解決方式：
-確認：
-
-ollama serve
-
-是否正在執行。
-
----
-
-問題：
-Model not found
-
-解決方式：
-
-ollama pull mistral
-
-下載缺失模型。
-
-
----------------------------------------------------
-
-性能建議
-
-
-1. 首次執行會載入模型
-   可能需要較長時間。
-
-2. 建議使用 GPU
-   Ollama 會自動偵測 GPU。
-
-3. 可使用量化模型
-   例如：
-
-mistral-7b-q4
-
-以提升推理速度。
-
-
----------------------------------------------------
-
-專案特色總結
-
-
-本專案具備以下特點：
-
-* 模組化 API 設計
-* 可獨立部署
-* 支援多平台串接
-* 本地 AI 推理
-* 隱私保護
-* AI + 演算法雙保險
-* 可擴充性高
-* 適用災防情境
-
-
----------------------------------------------------
-
-延伸文件
-
-
-更多細節請參考：
-
-docs/SPECIFICATION.md
-
-內容包含：
-
-* API 規格
-* 架構說明
-* 演算法設計
-* JSON Schema
-* 派遣邏輯
-* 系統流程
